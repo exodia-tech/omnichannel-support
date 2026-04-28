@@ -15,7 +15,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - SERVICE_FQDN_RAILS_3000
+      - SERVICE_FQDN_RAILS_3000=${SERVICE_FQDN_RAILS_3000}
       - RAILS_ENV=production
       - NODE_ENV=production
       - INSTALLATION_ENV=docker
