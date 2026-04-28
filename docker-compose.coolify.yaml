@@ -1,0 +1,110 @@
+services:
+  base: &base
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+      args:
+        BUNDLE_WITHOUT: 'development:test'
+        EXECJS_RUNTIME: 'Node'
+        RAILS_ENV: 'production'
+        RAILS_SERVE_STATIC_FILES: 'true'
+    image: omnichannel-support:latest
+    volumes:
+      - storage_data:/app/storage
+    environment:
+      - RAILS_ENV=production
+      - NODE_ENV=production
+      - INSTALLATION_ENV=docker
+      - RAILS_LOG_TO_STDOUT=true
+      - RAILS_SERVE_STATIC_FILES=true
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_DATABASE=chatwoot
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - REDIS_URL=redis://:${SERVICE_PASSWORD_REDIS}@redis:6379
+      - REDIS_PASSWORD=${SERVICE_PASSWORD_REDIS}
+      - SECRET_KEY_BASE=${SERVICE_BASE64_64_SECRETKEYBASE}
+      - FRONTEND_URL=${SERVICE_FQDN_RAILS_3000}
+      - ACTIVE_STORAGE_SERVICE=local
+      - ENABLE_ACCOUNT_SIGNUP=false
+
+  migrate:
+    <<: *base
+    command: ['bundle', 'exec', 'rails', 'db:chatwoot_prepare']
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  rails:
+    <<: *base
+    expose:
+      - '3000'
+    entrypoint: docker/entrypoints/rails.sh
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/health || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  sidekiq:
+    <<: *base
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pgrep -f sidekiq || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d chatwoot']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:alpine
+    restart: always
+    command: ['sh', '-c', 'redis-server --requirepass "$$REDIS_PASSWORD"']
+    environment:
+      - REDIS_PASSWORD=${SERVICE_PASSWORD_REDIS}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" ping | grep PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  storage_data:
+  postgres_data:
+  redis_data:
