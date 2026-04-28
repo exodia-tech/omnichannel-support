@@ -12,8 +12,9 @@ services:
     volumes:
       - storage_data:/app/storage
     environment:
-      # Bare declaration → tells Coolify to provision Traefik routing for rails:3000
-      - SERVICE_FQDN_RAILS_3000
+      # Tells Coolify to keep Traefik routing alive for the rails service FQDN
+      # (resolves to first exposed port = 3000)
+      - SERVICE_FQDN_RAILS=${SERVICE_FQDN_RAILS}
       - RAILS_ENV=production
       - NODE_ENV=production
       - INSTALLATION_ENV=docker
